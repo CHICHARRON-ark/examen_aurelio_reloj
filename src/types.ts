@@ -32,7 +32,10 @@ export type MeetupSession = {
   place: string;
   meetsAt: number;
   myStatus: MeetupResponse;
+  dueNotified?: boolean;
 };
+
+export type EconomySource = 'pending' | 'live' | 'partial' | 'cached';
 
 export type EconomyTick = {
   usdMxn: number;
@@ -42,6 +45,28 @@ export type EconomyTick = {
   ipc: number;
   ipcChangePct: number;
   updatedAt: number;
+  source: EconomySource;
+};
+
+export type WatchWidgetId = 'time' | 'fx' | 'temperature' | 'heart';
+
+export type WatchSlot = {
+  id: WatchWidgetId;
+  visible: boolean;
+};
+
+export type WeatherTick = {
+  celsius: number | null;
+  updatedAt: number;
+  source: 'pending' | 'live' | 'cached';
+  place: string;
+  lat: number;
+  lon: number;
+};
+
+export type HeartTick = {
+  bpm: number | null;
+  updatedAt: number;
 };
 
 export type CheckInEvent = {
@@ -49,4 +74,20 @@ export type CheckInEvent = {
   type: 'llegue' | 'sali';
   by: string;
   at: number;
+  lat?: number;
+  lon?: number;
+  place?: string;
+};
+
+export type TetherEventKind =
+  | 'vote_created'
+  | 'vote_closed'
+  | 'meetup_created'
+  | 'meetup_due'
+  | 'meetup_response'
+  | 'check_in';
+
+export type TetherEvent = {
+  id: string;
+  kind: TetherEventKind;
 };

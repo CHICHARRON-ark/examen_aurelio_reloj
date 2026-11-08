@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# estado del enlace entre móvil y reloj
+server/data/

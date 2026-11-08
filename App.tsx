@@ -1,23 +1,40 @@
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TetherProvider, useTether } from './src/context/TetherContext';
 import { PhoneApp } from './src/screens/phone/PhoneApp';
 import { WatchApp } from './src/screens/watch/WatchApp';
 import { colors, space } from './src/theme';
 
+function openWatchWindow() {
+  if (typeof window === 'undefined') return;
+  const url = `${window.location.origin}${window.location.pathname}?as=watch`;
+  window.open(url, 'tether-watch', 'popup,width=460,height=780');
+}
+
 function ModeSwitch() {
   const insets = useSafeAreaInsets();
-  const { deviceMode, setDeviceMode } = useTether();
+  const { deviceMode, setDeviceMode, connected, sessions } = useTether();
   const modes = [
     { id: 'dual' as const, label: 'Dual' },
     { id: 'phone' as const, label: 'Móvil' },
     { id: 'watch' as const, label: 'Reloj' },
   ];
+  const separateWatch =
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('as') !== 'watch';
 
   return (
     <View style={[styles.modeBar, { paddingTop: Math.max(insets.top, 8) }]}>
       <Text style={styles.modeTitle}>TETHER</Text>
+      <Text style={styles.linkText}>
+        {connected
+          ? sessions > 1
+            ? `Enlace activo · ${sessions} sesiones`
+            : 'Enlace activo · falta la otra sesión'
+          : 'Reconectando con el enlace…'}
+      </Text>
       <View style={styles.modeRow}>
         {modes.map((m) => {
           const on = deviceMode === m.id;
@@ -31,6 +48,11 @@ function ModeSwitch() {
             </Pressable>
           );
         })}
+        {separateWatch ? (
+          <Pressable onPress={openWatchWindow} style={styles.modeChip}>
+            <Text style={styles.modeChipText}>Abrir reloj</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -52,7 +74,7 @@ function Root() {
 
       {deviceMode === 'watch' && (
         <View style={styles.watchOnly}>
-          <Text style={styles.hint}>Simulador de reloj · contenido dentro del círculo</Text>
+          <Text style={styles.hint}>Reloj enlazado · contenido dentro del círculo</Text>
           <WatchApp />
         </View>
       )}
@@ -63,7 +85,7 @@ function Root() {
             <PhoneApp />
           </View>
           <View style={styles.dualWatch}>
-            <Text style={styles.hint}>Reloj (sync en vivo)</Text>
+            <Text style={styles.hint}>Reloj (mismo enlace)</Text>
             <WatchApp compact />
           </View>
         </View>
@@ -104,6 +126,11 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1.5,
     color: colors.accent,
+  },
+  linkText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '600',
   },
   modeRow: {
     flexDirection: 'row',

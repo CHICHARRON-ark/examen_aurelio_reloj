@@ -29,11 +29,47 @@ function Card({ children }: { children: React.ReactNode }) {
   return <View style={styles.card}>{children}</View>;
 }
 
+function marketGlance(economy: { source: string; usdMxn: number; usdChangePct: number }) {
+  if (economy.source === 'pending' || economy.usdMxn <= 0) return 'Consultando USD/MXN…';
+  const origin = economy.source === 'cached' ? 'último dato' : 'en vivo';
+  return `USD/MXN ${economy.usdMxn.toFixed(2)} (${pctText(economy.usdChangePct)}) · ${origin}`;
+}
+
+const WIDGET_LABEL = {
+  time: 'Hora',
+  fx: 'Tipo de cambio',
+  temperature: 'Temperatura',
+  heart: 'Ritmo cardiaco',
+} as const;
+
 function HomeScreen() {
-  const { now, contacts, meId, vote, meetup, economy, setPhoneTab, setWatchPage, setMyStatus } =
-    useTether();
-  const me = contacts.find((c) => c.id === meId)!;
+  const {
+    now,
+    contacts,
+    meId,
+    vote,
+    meetup,
+    economy,
+    watchLayout,
+    weather,
+    heart,
+    heartLive,
+    heartNote,
+    setPhoneTab,
+    setWatchPage,
+    setMyStatus,
+    setWatchLayout,
+    connectHeart,
+  } = useTether();
+  const me = contacts.find((c) => c.id === meId);
   const others = contacts.filter((c) => !c.isMe);
+  if (!me) {
+    return (
+      <View style={styles.scroll}>
+        <Text style={styles.headline}>Conectando con el enlace…</Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -59,6 +95,81 @@ function HomeScreen() {
       </Card>
 
       <Card>
+        <Text style={styles.cardTitle}>Pantalla del reloj</Text>
+        <Text style={styles.muted}>
+          Arriba se ve primero. Oculta lo que no quieras en la cara principal.
+        </Text>
+        {watchLayout.map((slot, index) => (
+          <View key={slot.id} style={styles.listRow}>
+            <View style={styles.rowWrap}>
+              <Pressable
+                disabled={index === 0}
+                onPress={() => {
+                  const next = watchLayout.slice();
+                  const [item] = next.splice(index, 1);
+                  next.splice(index - 1, 0, item);
+                  setWatchLayout(next);
+                }}
+                style={[styles.orderBtn, index === 0 && styles.btnDisabled]}
+              >
+                <Text style={styles.orderText}>Subir</Text>
+              </Pressable>
+              <Pressable
+                disabled={index === watchLayout.length - 1}
+                onPress={() => {
+                  const next = watchLayout.slice();
+                  const [item] = next.splice(index, 1);
+                  next.splice(index + 1, 0, item);
+                  setWatchLayout(next);
+                }}
+                style={[styles.orderBtn, index === watchLayout.length - 1 && styles.btnDisabled]}
+              >
+                <Text style={styles.orderText}>Bajar</Text>
+              </Pressable>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle}>{WIDGET_LABEL[slot.id]}</Text>
+              <Text style={styles.muted}>
+                {slot.id === 'temperature'
+                  ? weather.celsius == null
+                    ? 'Consultando clima…'
+                    : `${Math.round(weather.celsius)}° · ${weather.place}`
+                  : slot.id === 'heart'
+                    ? heart.bpm == null
+                      ? 'Sin sensor'
+                      : `${heart.bpm} lpm`
+                    : slot.visible
+                      ? 'En la cara'
+                      : 'Oculto'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() =>
+                setWatchLayout(
+                  watchLayout.map((item) =>
+                    item.id === slot.id ? { ...item, visible: !item.visible } : item,
+                  ),
+                )
+              }
+              style={[styles.chip, slot.visible && styles.chipOn]}
+            >
+              <Text style={[styles.chipText, slot.visible && styles.chipTextOn]}>
+                {slot.visible ? 'Visible' : 'Oculto'}
+              </Text>
+            </Pressable>
+          </View>
+        ))}
+        {watchLayout.some((slot) => slot.id === 'heart' && slot.visible) ? (
+          <Pressable style={styles.btnGhost} onPress={connectHeart}>
+            <Text style={styles.btnGhostText}>
+              {heartLive ? 'Leyendo pulso…' : 'Conectar pulsómetro'}
+            </Text>
+          </Pressable>
+        ) : null}
+        {heartNote ? <Text style={styles.muted}>{heartNote}</Text> : null}
+      </Card>
+
+      <Card>
         <Text style={styles.cardTitle}>Tu gente ahora</Text>
         {others.map((c) => (
           <View key={c.id} style={styles.listRow}>
@@ -80,7 +191,7 @@ function HomeScreen() {
             ? `Votación: ${vote.question} · ${formatCountdown(vote.endsAt - now)}`
             : meetup.active
               ? `Encuentro: ${meetup.title} · ${formatCountdown(meetup.meetsAt - now)}`
-              : `USD/MXN ${economy.usdMxn.toFixed(2)} (${pctText(economy.usdChangePct)})`}
+              : marketGlance(economy)}
         </Text>
         <View style={styles.rowWrap}>
           <Pressable
@@ -108,7 +219,7 @@ function HomeScreen() {
 }
 
 function CircleScreen() {
-  const { contacts, checkIns, sendCheckIn, now } = useTether();
+  const { contacts, checkIns, sendCheckIn, now, locating, locationNote } = useTether();
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -134,16 +245,21 @@ function CircleScreen() {
       <Card>
         <Text style={styles.cardTitle}>Check-in rápido</Text>
         <View style={styles.rowWrap}>
-          <Pressable style={styles.btn} onPress={() => sendCheckIn('llegue')}>
-            <Text style={styles.btnText}>Llegué</Text>
+          <Pressable
+            style={[styles.btn, locating && styles.btnDisabled]}
+            disabled={locating}
+            onPress={() => sendCheckIn('llegue')}
+          >
+            <Text style={styles.btnText}>{locating ? 'Ubicando…' : 'Llegué'}</Text>
           </Pressable>
           <Pressable style={styles.btnGhost} onPress={() => sendCheckIn('sali')}>
             <Text style={styles.btnGhostText}>Salí</Text>
           </Pressable>
         </View>
         <Text style={[styles.muted, { marginTop: 8 }]}>
-          También puedes hacerlo desde el reloj; aparece aquí al instante.
+          Llegué usa la ubicación de este dispositivo y viaja por el enlace hasta el reloj.
         </Text>
+        {locationNote ? <Text style={styles.errorText}>{locationNote}</Text> : null}
       </Card>
 
       <Card>
@@ -154,6 +270,7 @@ function CircleScreen() {
           checkIns.map((e) => (
             <Text key={e.id} style={styles.body}>
               {e.type === 'llegue' ? 'Llegué' : 'Salí'} · {formatTime(e.at)}
+              {e.place ? ` · ${e.place}` : e.lat != null ? ' · ubicación enviada' : ''}
             </Text>
           ))
         )}
@@ -437,49 +554,69 @@ function EconomyScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Text style={styles.screenTitle}>Mercado</Text>
-      <Text style={styles.muted}>Capa económica secundaria · glance en el reloj</Text>
+      <Text style={styles.muted}>
+        {economy.source === 'live'
+          ? `En vivo · Frankfurter y Yahoo · ${formatTime(economy.updatedAt)}`
+          : economy.source === 'partial'
+            ? `Parcial · ${formatTime(economy.updatedAt)}`
+            : economy.source === 'cached'
+              ? `Sin red · último dato ${formatTime(economy.updatedAt)}`
+              : 'Consultando Frankfurter y Yahoo…'}
+      </Text>
 
       <Card>
         <Text style={styles.cardTitle}>USD / MXN</Text>
-        <Text style={styles.clockBig}>{economy.usdMxn.toFixed(2)}</Text>
-        <Text
-          style={{
-            color: economy.usdChangePct >= 0 ? colors.ok : colors.danger,
-            fontWeight: '700',
-          }}
-        >
-          {pctText(economy.usdChangePct)}
+        <Text style={styles.clockBig}>
+          {economy.source === 'pending' ? '—' : economy.usdMxn.toFixed(2)}
         </Text>
+        {economy.source === 'pending' ? null : (
+          <Text
+            style={{
+              color: economy.usdChangePct >= 0 ? colors.ok : colors.danger,
+              fontWeight: '700',
+            }}
+          >
+            {pctText(economy.usdChangePct)}
+          </Text>
+        )}
       </Card>
 
       <Card>
         <View style={styles.listRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>S&P 500</Text>
-            <Text style={styles.muted}>{economy.spx.toFixed(1)}</Text>
+            <Text style={styles.muted}>
+              {economy.source === 'pending' ? '—' : economy.spx.toFixed(1)}
+            </Text>
           </View>
-          <Text
-            style={{
-              color: economy.spxChangePct >= 0 ? colors.ok : colors.danger,
-              fontWeight: '700',
-            }}
-          >
-            {pctText(economy.spxChangePct)}
-          </Text>
+          {economy.source === 'pending' ? null : (
+            <Text
+              style={{
+                color: economy.spxChangePct >= 0 ? colors.ok : colors.danger,
+                fontWeight: '700',
+              }}
+            >
+              {pctText(economy.spxChangePct)}
+            </Text>
+          )}
         </View>
         <View style={styles.listRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.rowTitle}>IPC México</Text>
-            <Text style={styles.muted}>{economy.ipc.toLocaleString('es-MX')}</Text>
+            <Text style={styles.muted}>
+              {economy.source === 'pending' ? '—' : economy.ipc.toLocaleString('es-MX')}
+            </Text>
           </View>
-          <Text
-            style={{
-              color: economy.ipcChangePct >= 0 ? colors.ok : colors.danger,
-              fontWeight: '700',
-            }}
-          >
-            {pctText(economy.ipcChangePct)}
-          </Text>
+          {economy.source === 'pending' ? null : (
+            <Text
+              style={{
+                color: economy.ipcChangePct >= 0 ? colors.ok : colors.danger,
+                fontWeight: '700',
+              }}
+            >
+              {pctText(economy.ipcChangePct)}
+            </Text>
+          )}
         </View>
       </Card>
 
@@ -598,6 +735,19 @@ const styles = StyleSheet.create({
   },
   chipTextOn: {
     color: colors.accent,
+  },
+  orderBtn: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: colors.bg,
+  },
+  orderText: {
+    color: colors.ink,
+    fontSize: 11,
+    fontWeight: '700',
   },
   listRow: {
     flexDirection: 'row',

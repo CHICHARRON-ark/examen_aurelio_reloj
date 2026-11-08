@@ -9,7 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { WatchShell } from '../../components/WatchShell';
 import { useTether } from '../../context/TetherContext';
 import { colors } from '../../theme';
-import { formatCountdown, formatTime, pctText, statusLabel } from '../../utils/format';
+import { formatCountdown, formatTime, pctText } from '../../utils/format';
 
 type Props = { compact?: boolean };
 
@@ -52,28 +52,95 @@ function WatchNav({
 }
 
 function HomePage() {
-  const { now, contacts, meId, vote, meetup, economy } = useTether();
-  const me = contacts.find((c) => c.id === meId)!;
+  const { now, contacts, meId, vote, meetup, economy, weather, heart, watchLayout, connected, sessions } =
+    useTether();
+  const me = contacts.find((c) => c.id === meId);
+  const visible = watchLayout.filter((slot) => slot.visible);
   const alert =
     vote && !vote.closed
       ? `Voto ${formatCountdown(vote.endsAt - now)}`
       : meetup.active
         ? `Quedar ${formatCountdown(meetup.meetsAt - now)}`
-        : `${pctText(economy.usdChangePct)} USD`;
+        : '';
+
+  if (!me) {
+    return (
+      <View style={styles.page}>
+        <Text style={styles.title} numberOfLines={1}>
+          Enlace…
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.page}>
       <Text style={styles.kicker} numberOfLines={1}>
-        TETHER
+        {!connected ? 'SIN ENLACE' : sessions > 1 ? 'TETHER · ENLACE' : 'TETHER'}
       </Text>
-      <Text style={styles.clock} numberOfLines={1} adjustsFontSizeToFit>
-        {formatTime(now)}
+      {visible.length === 0 ? (
+        <Text style={styles.sub} numberOfLines={3}>
+          Elige elementos en el móvil
+        </Text>
+      ) : (
+        visible.map((slot) => {
+          const large = slot.id === 'time' && visible.length <= 2;
+          if (slot.id === 'time') {
+            return (
+              <WatchFact key={slot.id} label="Hora" value={formatTime(now)} large={large} />
+            );
+          }
+          if (slot.id === 'fx') {
+            return (
+              <WatchFact
+                key={slot.id}
+                label="USD/MXN"
+                value={economy.source === 'pending' || economy.usdMxn <= 0 ? '—' : economy.usdMxn.toFixed(2)}
+                large={large}
+              />
+            );
+          }
+          if (slot.id === 'temperature') {
+            return (
+              <WatchFact
+                key={slot.id}
+                label={weather.place || 'Temp'}
+                value={weather.celsius == null ? '—' : `${Math.round(weather.celsius)}°`}
+                large={large}
+              />
+            );
+          }
+          return (
+            <WatchFact
+              key={slot.id}
+              label={heart.bpm == null ? 'Sin sensor' : 'lpm'}
+              value={heart.bpm == null ? '—' : String(heart.bpm)}
+              large={large}
+            />
+          );
+        })
+      )}
+      {alert ? (
+        <Text style={styles.alert} numberOfLines={1}>
+          {alert}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function WatchFact({ label, value, large }: { label: string; value: string; large: boolean }) {
+  return (
+    <View style={styles.fact}>
+      <Text
+        style={large ? styles.clock : styles.factValue}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {value}
       </Text>
-      <Text style={styles.sub} numberOfLines={1}>
-        {statusLabel(me.status)}
-      </Text>
-      <Text style={styles.alert} numberOfLines={1}>
-        {alert}
+      <Text style={styles.kicker} numberOfLines={1}>
+        {label}
       </Text>
     </View>
   );
@@ -157,10 +224,7 @@ function MeetupPage() {
         </Text>
         <Pressable
           style={styles.secondaryBtn}
-          onPress={async () => {
-            await Haptics.selectionAsync();
-            createMeetup('Café', 'Plaza', 1);
-          }}
+          onPress={() => createMeetup('Café', 'Plaza', 1)}
         >
           <Text style={styles.secondaryText}>Demo 1 min</Text>
         </Pressable>
@@ -185,10 +249,7 @@ function MeetupPage() {
       <View style={styles.optCol}>
         <Pressable
           style={[styles.optBtn, meetup.myStatus === 'voy' && styles.optBtnActive]}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setMeetupResponse('voy');
-          }}
+          onPress={() => setMeetupResponse('voy')}
         >
           <Text style={styles.optText} numberOfLines={1}>
             Voy
@@ -196,10 +257,7 @@ function MeetupPage() {
         </Pressable>
         <Pressable
           style={[styles.optBtn, meetup.myStatus === 'llegue' && styles.optBtnActive]}
-          onPress={async () => {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setMeetupResponse('llegue');
-          }}
+          onPress={() => setMeetupResponse('llegue')}
         >
           <Text style={styles.optText} numberOfLines={1}>
             Llegué
@@ -207,10 +265,7 @@ function MeetupPage() {
         </Pressable>
         <Pressable
           style={[styles.optBtn, meetup.myStatus === 'tardo' && styles.optBtnActive]}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setMeetupResponse('tardo');
-          }}
+          onPress={() => setMeetupResponse('tardo')}
         >
           <Text style={styles.optText} numberOfLines={1}>
             Tardo
@@ -230,27 +285,16 @@ function CheckInPage() {
       <Text style={styles.title} numberOfLines={1}>
         Check-in
       </Text>
-      <Pressable
-        style={styles.primaryBtn}
-        onPress={async () => {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          sendCheckIn('llegue');
-        }}
-      >
+      <Pressable style={styles.primaryBtn} onPress={() => sendCheckIn('llegue')}>
         <Text style={styles.primaryText}>Llegué</Text>
       </Pressable>
-      <Pressable
-        style={styles.secondaryBtn}
-        onPress={async () => {
-          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          sendCheckIn('sali');
-        }}
-      >
+      <Pressable style={styles.secondaryBtn} onPress={() => sendCheckIn('sali')}>
         <Text style={styles.secondaryText}>Salí</Text>
       </Pressable>
       {last ? (
         <Text style={styles.sub} numberOfLines={1}>
-          {last.type === 'llegue' ? 'Llegué' : 'Salí'} · {formatTime(last.at)}
+          {last.type === 'llegue' ? 'Llegué' : 'Salí'}
+          {last.place ? ` · ${last.place}` : ''} · {formatTime(last.at)}
         </Text>
       ) : (
         <Text style={styles.sub} numberOfLines={1}>
@@ -270,17 +314,19 @@ function EconomyPage() {
         USD/MXN
       </Text>
       <Text style={styles.clock} numberOfLines={1} adjustsFontSizeToFit>
-        {economy.usdMxn.toFixed(2)}
+        {economy.source === 'pending' ? '—' : economy.usdMxn.toFixed(2)}
       </Text>
-      <Text
-        style={[
-          styles.sub,
-          { color: economy.usdChangePct >= 0 ? colors.watchAccent : '#FCA5A5' },
-        ]}
-        numberOfLines={1}
-      >
-        {pctText(economy.usdChangePct)}
-      </Text>
+      {economy.source === 'pending' ? null : (
+        <Text
+          style={[
+            styles.sub,
+            { color: economy.usdChangePct >= 0 ? colors.watchAccent : '#FCA5A5' },
+          ]}
+          numberOfLines={1}
+        >
+          {pctText(economy.usdChangePct)}
+        </Text>
+      )}
       <Pressable
         style={styles.secondaryBtn}
         onPress={() => {
@@ -366,6 +412,16 @@ const styles = StyleSheet.create({
     color: colors.watchAccent,
     fontSize: 11,
     fontWeight: '600',
+    maxWidth: '100%',
+  },
+  fact: {
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
+  factValue: {
+    color: colors.watchInk,
+    fontSize: 16,
+    fontWeight: '700',
     maxWidth: '100%',
   },
   optCol: {
